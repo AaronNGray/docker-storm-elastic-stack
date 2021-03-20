@@ -1,0 +1,112 @@
+version: '3.2'
+
+services:
+  zookeeper:
+    image: zookeeper
+    container_name: zookeeper
+    networks:
+      - elk
+    restart: always
+
+  nimbus:
+    image: storm:$STORM_VERSION
+    container_name: nimbus
+    command: storm nimbus
+    depends_on:
+      - zookeeper
+    links:
+      - zookeeper
+    restart: always
+    ports:
+      - 6627:6627
+    networks:
+      - elk
+
+  supervisor:
+    image: storm:$STORM_VERSION
+    container_name: supervisor
+    command: storm supervisor
+    depends_on:
+      - nimbus
+      - zookeeper
+    links:
+      - nimbus
+      - zookeeper
+    networks:
+      - elk
+    restart: always
+
+  ui:
+    image: storm:$STORM_VERSION
+    container_name: ui
+    command: storm ui
+    depends_on:
+      - nimbus
+      - zookeeper
+      - supervisor
+    links:
+      - nimbus
+      - zookeeper
+      - supervisor
+    networks:
+      - elk
+    restart: always
+
+  elasticsearch:
+    image: elasticsearch:$ELK_VERSION
+    container_name: elasticsearch
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - cluster.initial_master_nodes=es01
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 9200:9200
+    networks:
+      - elk
+    volumes:
+      - 'elasticsearch:/usr/share/elasticsearch/data'
+    depends_on:
+      - nimbus
+      - zookeeper
+      - supervisor
+    healthcheck:
+      test: curl -s https://localhost:9200 >/dev/null; if [[ $$? == 52 ]]; then echo 0; else echo 1; fi
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  kibana:
+    build:
+      context: kibana/
+      args:
+        ELK_VERSION: $ELK_VERSION
+        ELASTIC_PASSWORD: $ELASTIC_PASSWORD
+    volumes:
+      - type: bind
+        source: ./kibana/config/kibana.yml
+        target: /usr/share/kibana/config/kibana.yml
+        read_only: true
+    ports:
+      - "5601:5601"
+    networks:
+      - elk
+    depends_on:
+      - elasticsearch
+    healthcheck:
+      test: curl -s https://localhost:5601 >/dev/null; if [[ $$? == 52 ]]; then echo 0; else echo 1; fi
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+networks:
+  elk:
+    driver: bridge
+
+volumes:
+  elasticsearch:
