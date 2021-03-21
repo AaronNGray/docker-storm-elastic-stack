@@ -28,6 +28,9 @@ cd docker-storm-elastic-stack
 ```
 ./config/sysctl.sh
 ```
+### Checkout version 2.x
+git checkout v2.x
+
 ### Run docker compose
 ```
 docker-compose up -d
